@@ -1,0 +1,21 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+
+# VSCode / IDEA 配置
+.vscode/
+.idea/
+
+# 数据集
+dataset/CIFAR10/
+*.tar.gz
+*.zip
+
+# 模型文件
+*.pth
+*.h5
+*.ckpt
+
+# 日志
+*.log
