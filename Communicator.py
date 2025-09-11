@@ -16,6 +16,20 @@ class Communicator(object):
 
 
 	def send_msg(self, sock, msg):
+		# print('send', len(msg))
+		# if not msg:
+		# 	logger.warning("[WARNING] msg is empty.")
+		# else:
+		# 	# 针对特定格式 ['MSG_TYPE', data1, data2]
+		# 	if len(msg) == 2:
+		# 		print('msg[0]', len(msg[0]))
+		# 		print('msg[1]', len(msg[1]))
+		# 	elif len(msg) == 3:
+		# 		print('msg[0]', len(msg[0]))
+		# 		print('msg[1]', len(msg[1]))
+		# 		print('msg[2]', msg[2])
+		# 	else:
+		# 		logger.warning(f"[WARNING] Unexpected msg format: {msg}")
 		msg_pickle = pickle.dumps(msg)
 		sock.sendall(struct.pack(">I", len(msg_pickle)))
 		sock.sendall(msg_pickle)

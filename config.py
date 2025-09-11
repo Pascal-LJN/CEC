@@ -1,16 +1,16 @@
 import sys
 
 # Network configration
-SERVER_ADDR= '192.168.0.10'
+SERVER_ADDR= '192.168.123.75'
 SERVER_PORT = 51000
 
-K = 5 # Number of devices
-G = 3 # Number of groups
+K = 3 # Number of devices
+G = 2 # Number of groups
 
 # Unique clients order
-HOST2IP = {'pi41':'192.168.0.14' , 'pi42':'192.168.0.15', 'jetson-desktop':'192.168.0.25' , 'pi31':'192.168.0.36', 'pi32':'192.168.0.29'}
-CLIENTS_CONFIG= {'192.168.0.14':0, '192.168.0.15':1, '192.168.0.25':2, '192.168.0.36':3, '192.168.0.29':4}
-CLIENTS_LIST= ['192.168.0.14', '192.168.0.15', '192.168.0.25', '192.168.0.36', '192.168.0.29'] 
+HOST2IP = {'node1': '192.168.123.142', 'masternx':'192.168.123.182', 'yahboom':'192.168.123.164'}
+CLIENTS_CONFIG= {'192.168.123.142':0, '192.168.123.182':1, '192.168.123.164':2}
+CLIENTS_LIST= ['192.168.123.142', '192.168.123.182', '192.168.123.164']
 
 # Dataset configration
 dataset_name = 'CIFAR10'
@@ -22,17 +22,17 @@ N = 50000 # data length
 # Model configration
 model_cfg = {
 	# (Type, in_channels, out_channels, kernel_size, out_size(c_out*h*w), flops(c_out*h*w*k*k*c_in))
-	'VGG5' : [('C', 3, 32, 3, 32*32*32, 32*32*32*3*3*3), ('M', 32, 32, 2, 32*16*16, 0), 
-	('C', 32, 64, 3, 64*16*16, 64*16*16*3*3*32), ('M', 64, 64, 2, 64*8*8, 0), 
-	('C', 64, 64, 3, 64*8*8, 64*8*8*3*3*64), 
-	('D', 8*8*64, 128, 1, 64, 128*8*8*64), 
+	'VGG5' : [('C', 3, 32, 3, 32*32*32, 32*32*32*3*3*3), ('M', 32, 32, 2, 32*16*16, 0),
+	('C', 32, 64, 3, 64*16*16, 64*16*16*3*3*32), ('M', 64, 64, 2, 64*8*8, 0),
+	('C', 64, 64, 3, 64*8*8, 64*8*8*3*3*64),
+	('D', 8*8*64, 128, 1, 64, 128*8*8*64),
 	('D', 128, 10, 1, 10, 128*10)]
 }
 model_name = 'VGG5'
 model_size = 1.28
 model_flops = 32.902
 total_flops = 8488192
-split_layer = [6,6,6,6,6] #Initial split layers
+split_layer = [6,6,6] #Initial split layers
 model_len = 7
 
 
@@ -55,7 +55,11 @@ rl_gamma = 0.9             # discount factor
 rl_b = 100				   # Batchsize
 rl_lr = 0.0003             # parameters for Adam optimizer
 rl_betas = (0.9, 0.999)
-iteration = {'192.168.0.14' : 5, '192.168.0.15' : 5, '192.168.0.25': 50, '192.168.0.36': 5, '192.168.0.29': 5}  # infer times for each device
+iteration = {
+    '192.168.123.142': 5,
+    '192.168.123.182': 5,
+	'192.168.123.164': 5,
+}
 
 random = True
 random_seed = 0

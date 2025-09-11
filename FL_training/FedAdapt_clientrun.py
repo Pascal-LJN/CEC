@@ -108,14 +108,17 @@ for r in range(config.R):
 	'''
 	training_time = client.train(trainloader)
 	logger.info('ROUND: {} END'.format(r))
-	
-	logger.info('==> Waiting for aggregration')
-	client.upload()
+	# === ① 仅当 offload=True 时才需要下一轮切分点 ===
+	if offload:
+		config.split_layer = client.recv_msg(client.sock, 'SPLIT_LAYERS')[1]
 
+	# === ① 等服务器聚合完成的 ACK ===
+	client.recv_msg(client.sock, 'MSG_ROUND_DONE')
+	logger.info('==> Server ROUND_DONE received')
+
+	# === ② 收新的 split_layer & rebuild ===
 	logger.info('==> Reinitialization for Round : {:}'.format(r + 1))
 	s_time_rebuild = time.time()
-	if offload:
-		config.split_layer = client.recv_msg(client.sock)[1]
 
 	if r > 49:
 		LR = config.LR * 0.1

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from tqdm.auto import tqdm
+import tqdm
 import time
 import numpy as np
 import sys
@@ -50,55 +50,34 @@ class Client(Communicator):
 		logger.debug('Initialize Finished')
 
 	def train(self, trainloader):
-		# === 网络速度测试 ===
+		# Network speed test
 		network_time_start = time.time()
-		self.send_msg(self.sock, ['MSG_TEST_NETWORK', self.uninet.cpu().state_dict()])
-		_ = self.recv_msg(self.sock, 'MSG_TEST_NETWORK')
+		msg = ['MSG_TEST_NETWORK', self.uninet.cpu().state_dict()]
+		self.send_msg(self.sock, msg)
+		msg = self.recv_msg(self.sock,'MSG_TEST_NETWORK')[1]
 		network_time_end = time.time()
-		network_speed = (2 * config.model_size * 8) / (network_time_end - network_time_start)  # Mbit/s
+		network_speed = (2 * config.model_size * 8) / (network_time_end - network_time_start) #Mbit/s 
 
-		logger.info(f'Network speed is {network_speed:.2f} Mbit/s')
-		self.send_msg(self.sock, ['MSG_TEST_NETWORK', self.ip, network_speed])
+		logger.info('Network speed is {:}'.format(network_speed))
+		msg = ['MSG_TEST_NETWORK', self.ip, network_speed]
+		self.send_msg(self.sock, msg)
 
-		# === 正式训练开始 ===
+		# Training start
 		s_time_total = time.time()
+		time_training_c = 0
 		self.net.to(self.device)
 		self.net.train()
-
-		iteration = int(config.N / (config.K * config.B))
-		logger.info(f"Total training iterations expected: {iteration}")
-		loader_iter = iter(trainloader)
-
-		if self.split_layer == (config.model_len - 1):      # 不使用 offloading
-			for i in tqdm(range(iteration),
-						desc=f"[{self.ip}] classic",
-						unit="batch",
-						leave=False):
-				try:
-					inputs, targets = next(loader_iter)
-				except StopIteration:
-					loader_iter = iter(trainloader)
-					inputs, targets = next(loader_iter)
-
+		if self.split_layer == (config.model_len -1): # No offloading training
+			for batch_idx, (inputs, targets) in enumerate(tqdm.tqdm(trainloader)):
 				inputs, targets = inputs.to(self.device), targets.to(self.device)
 				self.optimizer.zero_grad()
 				outputs = self.net(inputs)
 				loss = self.criterion(outputs, targets)
 				loss.backward()
 				self.optimizer.step()
-
-
-		else:                                                # 使用 offloading
-			for i in tqdm(range(iteration),
-						desc=f"[{self.ip}] offload",
-						unit="batch",
-						leave=False):
-				try:
-					inputs, targets = next(loader_iter)
-				except StopIteration:
-					loader_iter = iter(trainloader)
-					inputs, targets = next(loader_iter)
-
+			
+		else: # Offloading training
+			for batch_idx, (inputs, targets) in enumerate(tqdm.tqdm(trainloader)):
 				inputs, targets = inputs.to(self.device), targets.to(self.device)
 				self.optimizer.zero_grad()
 				outputs = self.net(inputs)
@@ -106,33 +85,28 @@ class Client(Communicator):
 				msg = ['MSG_LOCAL_ACTIVATIONS_CLIENT_TO_SERVER', outputs.cpu(), targets.cpu()]
 				self.send_msg(self.sock, msg)
 
+				# Wait receiving server gradients
 				gradients = self.recv_msg(self.sock)[1].to(self.device)
+
 				outputs.backward(gradients)
 				self.optimizer.step()
 
-			# === 发送训练耗时 ===（必须在循环之后）
-			e_time_total = time.time()
-			training_time_pr = (e_time_total - s_time_total) / iteration
-			self.send_msg(self.sock, ['MSG_TRAINING_TIME_PER_ITERATION', self.ip, training_time_pr])
-			logger.debug("Sent MSG_TRAINING_TIME_PER_ITERATION")
-
-			# === 发送本地权重 ===
-			self.send_msg(self.sock, ['MSG_LOCAL_WEIGHTS_CLIENT_TO_SERVER', self.net.cpu().state_dict()])
-			logger.debug("Sent MSG_LOCAL_WEIGHTS_CLIENT_TO_SERVER")
-
-			return e_time_total - s_time_total  # offloading 模式下返回总时间
-
-		# === 无 offloading 模式，计算耗时并发送 ===
 		e_time_total = time.time()
-		training_time_pr = (e_time_total - s_time_total) / iteration
+		logger.info('Total time: ' + str(e_time_total - s_time_total))
 
-		self.send_msg(self.sock, ['MSG_TRAINING_TIME_PER_ITERATION', self.ip, training_time_pr])
-		logger.debug("Sent MSG_TRAINING_TIME_PER_ITERATION")
+		training_time_pr = (e_time_total - s_time_total) / int((config.N / (config.K * config.B)))
+		logger.info('training_time_per_iteration: ' + str(training_time_pr))
 
-		self.send_msg(self.sock, ['MSG_LOCAL_WEIGHTS_CLIENT_TO_SERVER', self.net.cpu().state_dict()])
-		logger.debug("Sent MSG_LOCAL_WEIGHTS_CLIENT_TO_SERVER")
+		# ✅ 发送训练时间
+		msg = ['MSG_TRAINING_TIME_PER_ITERATION', self.ip, training_time_pr]
+		self.send_msg(self.sock, msg)
+
+		# ✅ 发送本地权重
+		msg = ['MSG_LOCAL_WEIGHTS_CLIENT_TO_SERVER', self.net.cpu().state_dict()]
+		self.send_msg(self.sock, msg)
 
 		return e_time_total - s_time_total
+
 		
 	def upload(self):
 		msg = ['MSG_LOCAL_WEIGHTS_CLIENT_TO_SERVER', self.net.cpu().state_dict()]

@@ -31,9 +31,17 @@ state_dim = 2*config.G
 action_dim = config.G
 
 if offload:
-	#Initialize trained RL agent 
+	# Initialize trained RL agent 
 	agent = PPO.PPO(state_dim, action_dim, config.action_std, config.rl_lr, config.rl_betas, config.rl_gamma, config.K_epochs, config.eps_clip)
-	agent.policy.load_state_dict(torch.load('./PPO_FedAdapt.pth'))
+
+	try:
+		# For PyTorch >= 2.3 with weights_only support
+		state_dict = torch.load('./PPO.pth', weights_only=True, map_location='cuda')
+	except TypeError:
+		# For older versions of PyTorch, fallback without weights_only
+		state_dict = torch.load('./PPO.pth', map_location='cuda')
+
+	agent.policy.load_state_dict(state_dict)
 
 if offload:
 	logger.info('FedAdapt Training')
