@@ -1,62 +1,62 @@
-# Communicator Object
+# Communicator.py
+import pickle, struct, socket, logging, io, torch
 
-import pickle
-import struct
-import socket
-import torch
-
-import logging
 logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("Communicator")
 
 class Communicator(object):
-    def __init__(self, index, ip_address):
+    def __init__(self, index=0, ip_address="0.0.0.0"):
         self.index = index
         self.ip = ip_address
         self.sock = socket.socket()
 
     def send_msg(self, sock, msg):
-        """序列化并发送消息"""
-        msg_pickle = pickle.dumps(msg)
-        sock.sendall(struct.pack(">I", len(msg_pickle)))
-        sock.sendall(msg_pickle)
-        logger.debug(msg[0] + ' sent to ' +
-                     str(sock.getpeername()[0]) + ':' + str(sock.getpeername()[1]))
+        """统一发送消息（pickle序列化）"""
+        try:
+            msg_pickle = pickle.dumps(msg)
+            sock.sendall(struct.pack(">I", len(msg_pickle)))
+            sock.sendall(msg_pickle)
+            logger.debug(f"{msg[0]} sent to {sock.getpeername()[0]}:{sock.getpeername()[1]}")
+        except Exception as e:
+            logger.error(f"send_msg error: {e}")
 
     def recv_msg(self, sock, expect_msg_type=None):
-        """接收并反序列化消息，自动 map 到 CPU"""
-        msg_len = struct.unpack(">I", sock.recv(4))[0]
-        raw = sock.recv(msg_len, socket.MSG_WAITALL)
-
+        import io, torch, pickle, struct, socket
         try:
-            # GPU → CPU fallback
-            msg = pickle.loads(raw, fix_imports=True,
-                               encoding="latin1")
-            # 如果 msg[1] 是模型权重 dict，确保落在 CPU
-            if isinstance(msg, (list, tuple)) and len(msg) > 1 and isinstance(msg[1], dict):
-                msg[1] = {k: (v.cpu() if torch.is_tensor(v) else v)
-                          for k, v in msg[1].items()}
-            # 如果是 tensor，也强制转 CPU
-            elif isinstance(msg, (list, tuple)) and len(msg) > 1 and torch.is_tensor(msg[1]):
-                msg[1] = msg[1].cpu()
-        except Exception:
-            # 最保险：直接强制 torch.load map 到 CPU
-            import io
-            msg = pickle.loads(raw, fix_imports=True,
-                               encoding="latin1",
-                               buffers=None)
-            if torch.is_tensor(msg):
-                msg = msg.cpu()
+            hdr = sock.recv(4)
+            if not hdr or len(hdr) < 4:
+                logger.error("recv_msg error: Socket closed by peer (no header).")
+                return None
+            msg_len = struct.unpack(">I", hdr)[0]
 
-        logger.debug(msg[0] + ' received from ' +
-                     str(sock.getpeername()[0]) + ':' + str(sock.getpeername()[1]))
+            raw = sock.recv(msg_len, socket.MSG_WAITALL)
+            if not raw:
+                logger.error("recv_msg error: Socket closed by peer (no payload).")
+                return None
 
-        if expect_msg_type is not None:
-            if msg[0] == 'Finish':
-                return msg
-            elif msg[0] != expect_msg_type:
-                raise Exception(
-                    "Expected " + expect_msg_type + " but received " + msg[0])
-        return msg
+            # 先用 pickle.loads
+            try:
+                msg = pickle.loads(raw)
+            except Exception as e1:
+                # 若因 CUDA 反序列化失败，回退用 torch.load 强制 map 到 CPU
+                try:
+                    msg = torch.load(io.BytesIO(raw), map_location=torch.device("cpu"), weights_only=False)
+                except Exception as e2:
+                    logger.error("recv_msg error: %s", str(e2))
+                    return None
+
+            # 期望类型校验
+            if expect_msg_type is not None and isinstance(msg, (list, tuple)) and len(msg) > 0:
+                if msg[0] == 'Finish':
+                    return msg
+                if msg[0] != expect_msg_type:
+                    logger.warning("Expected %s but received %s", expect_msg_type, msg[0])
+                    # 不再抛异常，返回 None 让上层决定
+                    return None
+            return msg
+
+        except Exception as e:
+            logger.error("recv_msg error: %s", str(e))
+            return None
+

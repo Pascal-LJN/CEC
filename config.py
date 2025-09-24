@@ -14,7 +14,8 @@ CLIENTS_LIST= ['192.168.123.142', '192.168.123.182', '192.168.123.164']
 
 # Dataset configration
 dataset_name = 'CIFAR10'
-home = sys.path[0].split('FedAdapt')[0] + 'FedAdapt'
+import sys
+home = sys.path[0].split('CEC')[0] + 'CEC'
 dataset_path = home +'/dataset/'+ dataset_name +'/'
 N = 50000 # data length
 
